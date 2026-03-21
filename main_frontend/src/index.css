@@ -1,0 +1,288 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-primary: #D4622A;
+  --color-primary-light: #F5DED3;
+  --color-primary-dark: #A8421A;
+  --color-accent: #2A7D4F;
+  --color-accent-light: #D1EAD8;
+  --color-surface: #FDFAF6;
+  --color-surface-2: #F4EFE8;
+  --color-surface-3: #EBE3D8;
+  --color-text-primary: #1C1410;
+  --color-text-secondary: #6B5C4E;
+  --color-text-hint: #A89080;
+  --color-danger: #C0392B;
+  --color-danger-light: #FDECEA;
+  --color-warning: #E67E22;
+  --color-warning-light: #FDF0E0;
+  --color-safe: #27AE60;
+  --color-safe-light: #E8F8EE;
+  --color-border: #DDD3C8;
+}
+
+.dark {
+  --color-primary: #E8845A;
+  --color-primary-light: #3A2318;
+  --color-primary-dark: #F5A882;
+  --color-accent: #4CAF7D;
+  --color-accent-light: #1A3326;
+  --color-surface: #17120E;
+  --color-surface-2: #1F1812;
+  --color-surface-3: #2C221A;
+  --color-text-primary: #F5EDE5;
+  --color-text-secondary: #B8A898;
+  --color-text-hint: #756054;
+  --color-danger: #E85D5D;
+  --color-danger-light: #2D1010;
+  --color-warning: #F0A050;
+  --color-warning-light: #2D1E0A;
+  --color-safe: #52C97A;
+  --color-safe-light: #0E2A1A;
+  --color-border: #3A2D22;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Mukta', 'Noto Sans Devanagari', sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+  background-color: var(--color-surface);
+  transition: background-color 0.3s, color 0.3s;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'DM Serif Display', serif;
+}
+
+input, textarea, select, button {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.input-field {
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  font-size: 16px;
+  color: var(--color-text-primary);
+  width: 100%;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.input-field:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+
+.input-field::placeholder {
+  color: var(--color-text-hint);
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: 9999px;
+  padding: 14px 28px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s, background 0.2s;
+  min-height: 48px;
+  min-width: 48px;
+}
+
+.btn-primary:hover {
+  background: var(--color-primary-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(212, 98, 42, 0.3);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.btn-secondary {
+  background: transparent;
+  border: 2px solid var(--color-primary);
+  color: var(--color-primary);
+  border-radius: 9999px;
+  padding: 12px 26px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-height: 48px;
+  min-width: 48px;
+}
+
+.btn-secondary:hover {
+  background: var(--color-primary-light);
+}
+
+.btn-ghost {
+  background: transparent;
+  border: none;
+  color: var(--color-text-secondary);
+  padding: 12px 20px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: color 0.2s;
+  min-height: 48px;
+}
+
+.btn-ghost:hover {
+  color: var(--color-primary);
+}
+
+.btn-danger {
+  background: var(--color-danger);
+  color: white;
+  border: none;
+  border-radius: 9999px;
+  padding: 14px 28px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 48px;
+}
+
+.card {
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(60, 30, 10, 0.08);
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--color-surface-3);
+  border-top: 3px solid var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.animate-pulse-once {
+  animation: pulse 0.3s ease-in-out;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+  20%, 40%, 60%, 80% { transform: translateX(4px); }
+}
+
+.animate-shake {
+  animation: shake 0.5s ease-in-out;
+}
+
+@keyframes slideInTop {
+  from { transform: translateY(-100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.animate-slide-in-top {
+  animation: slideInTop 0.4s ease-out;
+}
+
+@keyframes bounceDot {
+  0%, 80%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-8px); }
+}
+
+.bounce-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-text-hint);
+  margin: 0 2px;
+}
+
+.bounce-dot:nth-child(1) { animation: bounceDot 1.4s infinite 0s; }
+.bounce-dot:nth-child(2) { animation: bounceDot 1.4s infinite 0.2s; }
+.bounce-dot:nth-child(3) { animation: bounceDot 1.4s infinite 0.4s; }
+
+@keyframes recordPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.recording-pulse {
+  animation: recordPulse 1s ease-in-out infinite;
+  color: var(--color-danger);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-hint);
+}
+
+.dark .leaflet-tile {
+  filter: brightness(0.8) contrast(1.1);
+}
+
+@keyframes toastIn {
+  from { transform: translateY(-20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes toastOut {
+  from { transform: translateY(0); opacity: 1; }
+  to { transform: translateY(-20px); opacity: 0; }
+}
+
+.toast-enter {
+  animation: toastIn 0.3s ease-out;
+}
+
+.toast-exit {
+  animation: toastOut 0.3s ease-in forwards;
+}
