@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { useState, useRef, useEffect } from 'react';
+import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { User, LogOut, ChevronDown } from 'lucide-react';
 import { useAuth } from './auth/AuthContext';
 import { authApi } from './auth/authApi';
 import { authConfig } from './auth/authConfig';
@@ -13,11 +14,14 @@ import ThemeToggle from './components/ThemeToggle';
 import AccentColorPicker from './components/AccentColorPicker';
 import OnboardingFlow from './pages/patient/OnboardingFlow';
 import HealthProfile from './pages/patient/HealthProfile';
+import PatientProfile from './pages/patient/PatientProfile';
 import ChatBot from './pages/patient/ChatBot';
 import DiagnosisResult from './pages/patient/DiagnosisResult';
 import AshaForm from './pages/asha/AshaForm';
 import AshaConfirmation from './pages/asha/AshaConfirmation';
+import AshaProfile from './pages/asha/AshaProfile';
 import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminProfile from './pages/admin/AdminProfile';
 
 // Redirects unauthenticated users to /login
 function ProtectedRoute({ children, allowedRoles }) {
@@ -46,36 +50,78 @@ function PublicOnlyRoute({ children }) {
 
 function UserMenu() {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function handleOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, []);
+
   if (!user) return null;
+
+  const profileRoutes = { patient: '/patient/profile', asha: '/asha/profile', admin: '/admin/profile' };
+  const displayName = user.firstName
+    ? `${user.firstName}${user.lastName ? ' ' + user.lastName : ''}`
+    : user.username || user.email || '?';
+  const initial = displayName[0].toUpperCase();
+
   return (
-    <div
-      style={{
-        position: 'fixed', bottom: '1rem', left: '1rem', zIndex: 1000,
-        display: 'flex', alignItems: 'center', gap: '0.5rem',
-        background: 'var(--color-surface-2)',
-        border: '1px solid var(--color-border)',
-        borderRadius: '0.75rem',
-        padding: '0.4rem 0.75rem',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-      }}
-    >
-      <span style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {user.username || user.email}
-      </span>
-      <span style={{ fontSize: '0.65rem', background: 'var(--color-primary)', color: '#fff', borderRadius: '999px', padding: '1px 6px' }}>
-        {user.role}
-      </span>
+    <div ref={ref} className="fixed top-4 left-4 z-[9998]">
+      {/* Trigger */}
       <button
-        onClick={logout}
-        style={{
-          fontSize: '0.75rem', fontWeight: 600,
-          color: 'var(--color-error, #ef4444)',
-          background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px',
-        }}
-        title="Log out"
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full bg-surface-2 border border-border shadow-card hover:shadow-elevated transition-shadow min-h-[44px]"
+        aria-label="User menu"
       >
-        Logout
+        <span className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-sm font-bold shrink-0 select-none">
+          {initial}
+        </span>
+        <span className="text-sm font-medium text-text-primary max-w-[110px] truncate hidden sm:block">
+          {displayName}
+        </span>
+        <ChevronDown
+          size={14}
+          className={`text-text-secondary transition-transform ${open ? 'rotate-180' : ''}`}
+        />
       </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div className="absolute top-[52px] left-0 w-52 bg-surface-2 border border-border rounded-2xl shadow-elevated overflow-hidden">
+          {/* Identity header */}
+          <div className="px-4 pt-3 pb-2.5 border-b border-border">
+            <p className="text-sm font-semibold text-text-primary truncate">{displayName}</p>
+            <p className="text-xs text-text-secondary truncate mb-1.5">{user.email}</p>
+            <span className="inline-block text-[11px] font-semibold bg-primary/15 text-primary rounded-full px-2.5 py-0.5 capitalize">
+              {user.role}
+            </span>
+          </div>
+
+          {/* Profile link */}
+          <button
+            onClick={() => { navigate(profileRoutes[user.role] || '/'); setOpen(false); }}
+            className="w-full text-left flex items-center gap-2.5 px-4 py-2.5 text-sm text-text-primary hover:bg-surface-3 transition-colors min-h-[44px]"
+          >
+            <User size={15} className="text-text-secondary shrink-0" />
+            My Profile
+          </button>
+
+          {/* Logout */}
+          <button
+            onClick={() => { logout(); setOpen(false); }}
+            className="w-full text-left flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium hover:bg-surface-3 transition-colors min-h-[44px]"
+            style={{ color: 'var(--color-danger)' }}
+          >
+            <LogOut size={15} className="shrink-0" />
+            Logout
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -180,16 +226,19 @@ function App() {
 
         {/* ── Patient routes ─────────────────────────────────────────────── */}
         <Route path="/patient/onboarding" element={<ProtectedRoute allowedRoles={['patient']}><OnboardingFlow /></ProtectedRoute>} />
-        <Route path="/patient/profile"    element={<ProtectedRoute allowedRoles={['patient']}><HealthProfile /></ProtectedRoute>} />
+        <Route path="/patient/profile"    element={<ProtectedRoute allowedRoles={['patient']}><PatientProfile /></ProtectedRoute>} />
+        <Route path="/patient/health"     element={<ProtectedRoute allowedRoles={['patient']}><HealthProfile /></ProtectedRoute>} />
         <Route path="/patient/chat"       element={<ProtectedRoute allowedRoles={['patient']}><ChatBot /></ProtectedRoute>} />
         <Route path="/patient/result"     element={<ProtectedRoute allowedRoles={['patient']}><DiagnosisResult /></ProtectedRoute>} />
 
         {/* ── ASHA routes ────────────────────────────────────────────────── */}
         <Route path="/asha/form"    element={<ProtectedRoute allowedRoles={['asha']}><AshaForm /></ProtectedRoute>} />
         <Route path="/asha/confirm" element={<ProtectedRoute allowedRoles={['asha']}><AshaConfirmation /></ProtectedRoute>} />
+        <Route path="/asha/profile" element={<ProtectedRoute allowedRoles={['asha']}><AshaProfile /></ProtectedRoute>} />
 
         {/* ── Admin routes ───────────────────────────────────────────────── */}
-        <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
+        <Route path="/admin"         element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
+        <Route path="/admin/profile" element={<ProtectedRoute allowedRoles={['admin']}><AdminProfile /></ProtectedRoute>} />
 
         {/* ── Fallback ───────────────────────────────────────────────────── */}
         <Route path="*" element={<Navigate to="/" replace />} />

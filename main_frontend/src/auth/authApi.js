@@ -57,6 +57,8 @@ export const authApi = {
         query: { token: payload.token, id: payload.id }
     }),
     getProfile: (token) => request('/home', { token }),
+    updateProfile: (data, token) =>
+        request('/home/profile', { method: 'PATCH', body: data, token }),
     updateSharePreference: (shareWithHospital, token) =>
         request('/home/share-preference', { method: 'PATCH', body: { shareWithHospital }, token }),
 };

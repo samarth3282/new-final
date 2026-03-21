@@ -75,6 +75,77 @@ export const mockTriageDistribution = {
   selfcare: 312,
 };
 
+// ── Admin Dashboard — additional data ─────────────────────────────────────────
+
+export const mockAdminStats = {
+  totalActivePatients: 247,
+  emergencyRequests: 3,
+  ambulanceAvailability: 8,
+  avgCasesPerAsha: 14.2,
+};
+
+export const mockTopSymptoms = [
+  { symptom: 'Fever', count: 67 },
+  { symptom: 'Cough', count: 52 },
+  { symptom: 'Headache', count: 48 },
+  { symptom: 'Body Pain', count: 41 },
+  { symptom: 'Diarrhea', count: 34 },
+  { symptom: 'Breathlessness', count: 28 },
+  { symptom: 'Skin Rash', count: 21 },
+  { symptom: 'Fatigue', count: 19 },
+];
+
+export const mockSymptomCoOccurrence = [
+  { source: 'Fever', target: 'Headache', value: 38 },
+  { source: 'Fever', target: 'Body Pain', value: 32 },
+  { source: 'Fever', target: 'Cough', value: 29 },
+  { source: 'Cough', target: 'Breathlessness', value: 24 },
+  { source: 'Headache', target: 'Fatigue', value: 18 },
+  { source: 'Diarrhea', target: 'Fatigue', value: 15 },
+  { source: 'Body Pain', target: 'Fatigue', value: 22 },
+  { source: 'Skin Rash', target: 'Fever', value: 11 },
+  { source: 'Breathlessness', target: 'Fatigue', value: 13 },
+  { source: 'Cough', target: 'Headache', value: 17 },
+  { source: 'Diarrhea', target: 'Fever', value: 20 },
+];
+
+export const mockDistrictSymptoms = [
+  { district: 'Ahmedabad', symptom: 'Fever', count: 42 },
+  { district: 'Ahmedabad', symptom: 'Cough', count: 28 },
+  { district: 'Gandhinagar', symptom: 'Fever', count: 18 },
+  { district: 'Gandhinagar', symptom: 'Diarrhea', count: 25 },
+  { district: 'Surat', symptom: 'Skin Rash', count: 31 },
+  { district: 'Surat', symptom: 'Fever', count: 36 },
+  { district: 'Vadodara', symptom: 'Headache', count: 22 },
+  { district: 'Vadodara', symptom: 'Cough', count: 19 },
+  { district: 'Rajkot', symptom: 'Body Pain', count: 27 },
+  { district: 'Rajkot', symptom: 'Fever', count: 33 },
+  { district: 'Bhavnagar', symptom: 'Fatigue', count: 14 },
+  { district: 'Bhavnagar', symptom: 'Breathlessness', count: 11 },
+];
+
+export const mockPatientJourney = [
+  { id: 'symptom', label: 'Symptom Entry', desc: 'Patient enters symptoms via chatbot' },
+  { id: 'triage', label: 'AI Triage', desc: 'Model classifies severity' },
+  { id: 'diagnosis', label: 'Diagnosis', desc: 'Top 5 possible conditions shown' },
+  { id: 'action', label: 'Action Plan', desc: 'Immediate steps & hospital referral' },
+  { id: 'followup', label: 'Follow-up', desc: 'ASHA worker reviews & tracks' },
+];
+
+// Gujarat state — districts with approximate centroids for the heatmap
+export const gujaratDistricts = [
+  { name: 'Ahmedabad', lat: 23.02, lng: 72.57 },
+  { name: 'Gandhinagar', lat: 23.22, lng: 72.68 },
+  { name: 'Surat', lat: 21.17, lng: 72.83 },
+  { name: 'Vadodara', lat: 22.30, lng: 73.19 },
+  { name: 'Rajkot', lat: 22.30, lng: 70.80 },
+  { name: 'Bhavnagar', lat: 21.76, lng: 72.15 },
+  { name: 'Jamnagar', lat: 22.47, lng: 70.07 },
+  { name: 'Junagadh', lat: 21.52, lng: 70.46 },
+  { name: 'Anand', lat: 22.56, lng: 72.96 },
+  { name: 'Mehsana', lat: 23.59, lng: 72.38 },
+];
+
 export const EMERGENCY_KEYWORDS = [
   'chest pain', 'heart attack', 'unconscious', 'seizure', 'stroke',
   'not breathing', 'severe bleeding', 'paralysis', 'suicide',
