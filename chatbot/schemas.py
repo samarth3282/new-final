@@ -110,6 +110,7 @@ class GraphState(TypedDict, total=False):
     user_message: str
     user_id: str
     session_id: str
+    user_language: str
 
     # ── INPUT CLASSIFICATION ────────────────────────────────────────────────
     input_type: str                        # "user_symptom" | "user_query" | "user_answer"
@@ -168,6 +169,7 @@ def default_graph_state() -> GraphState:
         user_message="",
         user_id="",
         session_id="",
+        user_language="en",
         input_type="",
         extracted_symptoms=[],
         urgency_signals=[],
@@ -250,6 +252,12 @@ class InputRequest(BaseModel):
         description="User longitude for hospital finder (decimal degrees).",
         examples=[73.1812],
     )
+    language: str = Field(
+        default="en",
+        max_length=10,
+        description="User's preferred language code (e.g. 'en', 'hi', 'gu', 'mr', 'ta').",
+        examples=["hi"],
+    )
 
     @field_validator("message")
     @classmethod
@@ -278,10 +286,10 @@ class HospitalInfo(BaseModel):
     name: str = Field(..., description="Hospital or clinic name", examples=["City General Hospital"])
     address: str = Field(..., description="Full street address or postal code", examples=["390001"])
     distance_km: float = Field(..., ge=0.0, description="Distance from user in kilometres", examples=[0.82])
-    phone: str = Field(..., description="Contact phone number", examples=["N/A"])
+    phone: str = Field(default="N/A", description="Contact phone number", examples=["N/A"])
     open_now: Optional[bool] = Field(default=None, description="Whether the facility is currently open (null if unknown)")
-    lat: float = Field(..., description="Facility latitude in decimal degrees", examples=[22.3083166])
-    lng: float = Field(..., description="Facility longitude in decimal degrees", examples=[73.1798995])
+    lat: Optional[float] = Field(default=None, description="Facility latitude in decimal degrees", examples=[22.3083166])
+    lng: Optional[float] = Field(default=None, description="Facility longitude in decimal degrees", examples=[73.1798995])
 
     model_config = {
         "json_schema_extra": {

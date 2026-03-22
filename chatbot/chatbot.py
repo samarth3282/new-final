@@ -76,6 +76,7 @@ async def run_chatbot(request: InputRequest) -> OutputResponse:
     initial_state["user_message"] = request.message
     initial_state["user_id"]      = user_id
     initial_state["session_id"]   = session_id
+    initial_state["user_language"] = request.language or "en"
 
     # lat/lng: use request values if provided, otherwise keep from session
     if request.lat is not None:

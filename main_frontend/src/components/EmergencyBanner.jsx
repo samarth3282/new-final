@@ -1,7 +1,7 @@
 import { useTranslation } from '../contexts/I18nContext';
-import { AlertTriangle, Phone } from 'lucide-react';
+import { AlertTriangle, Phone, BellRing } from 'lucide-react';
 
-export default function EmergencyBanner({ onCallAmbulance }) {
+export default function EmergencyBanner({ onCallAmbulance, onSOS, sosLoading, sosSuccess }) {
   const { t } = useTranslation();
 
   return (
@@ -17,6 +17,18 @@ export default function EmergencyBanner({ onCallAmbulance }) {
         >
           <Phone size={18} />
           {t('emergency.call_108')}
+        </button>
+        <button
+          onClick={onSOS}
+          disabled={sosLoading || sosSuccess}
+          className="flex items-center gap-2 px-4 py-3 rounded-full font-semibold text-base min-h-[48px] border-2 border-white text-white hover:bg-white/20 transition-colors disabled:opacity-60"
+        >
+          <BellRing size={18} />
+          {sosSuccess
+            ? t('emergency.sos_sent')
+            : sosLoading
+            ? t('emergency.sos_loading')
+            : t('emergency.sos_button')}
         </button>
       </div>
     </div>

@@ -298,6 +298,10 @@ async def call_hospital_api(
                 item = dict(f)
                 if "distance_km" not in item and "road_km" in item:
                     item["distance_km"] = round(float(item.pop("road_km")), 2)
+                # Ensure phone has a default
+                item.setdefault("phone", "N/A")
+                # Ensure distance_km has a default
+                item.setdefault("distance_km", 0.0)
                 normalised.append(item)
             raw = {"hospitals": normalised}
 

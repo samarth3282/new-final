@@ -120,7 +120,12 @@
     "immediate_steps": "तात्काळ पावले",
     "while_waiting": "मदतीची वाट पाहताना:",
     "keep_calm": "रुग्णाला शांत ठेवा",
-    "no_food_water": "अन्न किंवा पाणी देऊ नका"
+    "no_food_water": "अन्न किंवा पाणी देऊ नका",
+    "sos_button": "SOS — नातेवाईकांना कळवा",
+    "sos_loading": "SOS पाठवत आहे…",
+    "sos_sent": "SOS पाठवला ✓",
+    "sos_success": "{n} नातेवाईक(ांना) SOS यशस्वीरित्या पाठवला.",
+    "sos_failed": "SOS पाठवण्यात अयशस्वी. पुन्हा प्रयत्न करा."
   },
   "hospitals": {
     "km_away": "किमी दूर",

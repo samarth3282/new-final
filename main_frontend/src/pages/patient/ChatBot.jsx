@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from '../../contexts/I18nContext';
 import { useUser } from '../../contexts/UserContext';
+import { useAuth } from '../../auth/AuthContext';
 import { useToast } from '../../components/Toast';
 import ChatMessage from '../../components/ChatMessage';
 import ChatInput from '../../components/ChatInput';
@@ -18,11 +19,15 @@ export default function ChatBot() {
   const navigate = useNavigate();
   const { t, lang } = useTranslation();
   const { state } = useUser();
+  const { accessToken } = useAuth();
   const { addToast } = useToast();
   const [messages, setMessages] = useState([]);
   const [isAnalysing, setIsAnalysing] = useState(false);
   const [showEmergency, setShowEmergency] = useState(false);
   const [showHospitals, setShowHospitals] = useState(false);
+  const [sosLoading, setSosLoading] = useState(false);
+  const [sosSuccess, setSosSuccess] = useState(false);
+  const lastEmergencyResponseRef = useRef(null);
   const [chatMode, setChatMode] = useState('text'); // 'text' | 'voice'
   const [isSpeaking, setIsSpeaking] = useState(false);
   const chatModeRef = useRef('text');
@@ -67,8 +72,15 @@ export default function ChatBot() {
         },
         (err) => {
           console.warn('Geolocation denied or unavailable:', err.message);
+          // Fallback to PDPU, Gandhinagar so hospital finder still works
+          setUserLat(23.1567);
+          setUserLng(72.6639);
         }
       );
+    } else {
+      // No geolocation support — use fallback
+      setUserLat(23.1567);
+      setUserLng(72.6639);
     }
   }, []);
 
@@ -160,6 +172,7 @@ export default function ChatBot() {
         message: englishText,
         lat: userLat,
         lng: userLng,
+        language: lang,
       });
       removeTypingIndicator(typingId);
       setSessionId(response.session_id);
@@ -234,6 +247,14 @@ export default function ChatBot() {
         break;
       case 'emergency':
         setShowEmergency(true);
+        lastEmergencyResponseRef.current = response;
+        await translateAndDisplay(response);
+        if (response.hospital_info?.length) {
+          setHospitalData(normalizeHospitals(response.hospital_info));
+          setShowHospitals(true);
+        }
+        break;
+      case 'suggestions':
         await translateAndDisplay(response);
         if (response.hospital_info?.length) {
           setHospitalData(normalizeHospitals(response.hospital_info));
@@ -245,31 +266,17 @@ export default function ChatBot() {
     }
   }
 
-  // ── translateAndDisplay: translate response → show in chat → speak aloud ─
+  // ── translateAndDisplay: display response in chat → speak aloud ─
   async function translateAndDisplay(response) {
     const langCode = SARVAM_LANG_CODES[lang] || 'hi-IN';
 
-    const translate = async (text) => {
-      if (!text || lang === 'en') return text;
-      try {
-        return await translateFromEnglish(text, langCode);
-      } catch {
-        return text;
-      }
-    };
+    // The backend now responds in the user's language directly,
+    // so we display the message as-is without translation.
+    const translatedMessage = response.message || '';
 
-    const translatedMessage = await translate(response.message);
+    let translatedItems = response.action_items || [];
 
-    let translatedItems = [];
-    if (response.action_items?.length) {
-      translatedItems = await Promise.all(
-        response.action_items.map(item => translate(item).catch(() => item))
-      );
-    }
-
-    const translatedDisclaimer = response.disclaimer
-      ? await translate(response.disclaimer)
-      : null;
+    const translatedDisclaimer = response.disclaimer || null;
 
     // Build display text
     let displayText = translatedMessage || '';
@@ -280,8 +287,7 @@ export default function ChatBot() {
       displayText += `\n\n_${translatedDisclaimer}_`;
     }
     if (response.session_complete) {
-      const sessionCompleteMsg = await translate(t('chatbot.session_complete'));
-      displayText += `\n\n${sessionCompleteMsg}`;
+      displayText += `\n\n${t('chatbot.session_complete')}`;
     }
 
     addBotMessage(displayText);
@@ -308,13 +314,68 @@ export default function ChatBot() {
       id: i + 1,
       name: h.name,
       address: h.address,
-      distance: `${h.distance_km.toFixed(1)} km`,
-      phone: h.phone,
+      distance: h.distance_km != null ? `${h.distance_km.toFixed(1)} km` : 'Unknown',
+      phone: h.phone || 'N/A',
       hours: h.open_now === true ? 'Open Now' : h.open_now === false ? 'Closed' : 'Unknown',
       type: 'hospital',
-      lat: h.lat,
-      lng: h.lng,
+      lat: h.lat ?? null,
+      lng: h.lng ?? null,
     }));
+  }
+
+  // ── handleSOS — alerts all linked relatives via SMS + call ─────────────
+  async function handleSOS() {
+    if (sosLoading || sosSuccess) return;
+    setSosLoading(true);
+
+    let location = 'Unknown location';
+    if (userLat !== null && userLng !== null) {
+      try {
+        const geoRes = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?lat=${userLat}&lon=${userLng}&format=json`,
+          { headers: { 'User-Agent': 'AetrixHealthApp/1.0' } }
+        );
+        if (geoRes.ok) {
+          const geoData = await geoRes.json();
+          location = geoData.display_name || `${userLat}, ${userLng}`;
+        } else {
+          location = `${userLat}, ${userLng}`;
+        }
+      } catch {
+        location = `${userLat}, ${userLng}`;
+      }
+    }
+
+    const emergencyResponse = lastEmergencyResponseRef.current;
+    const summary = emergencyResponse?.session_summary || {};
+
+    try {
+      const res = await fetch('http://localhost:3000/api/emergency/sos', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          patientName: state.profile.preferredName || state.profile.firstName || 'Patient',
+          symptoms: summary.symptoms || [],
+          urgency: emergencyResponse?.urgency_label || 'Emergency',
+          severity: summary.severity ?? null,
+          duration: summary.duration || 'unknown',
+          location,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+      setSosSuccess(true);
+      addToast(t('emergency.sos_success').replace('{n}', data.notified ?? ''), 'success');
+    } catch (err) {
+      console.error('SOS failed:', err);
+      addToast(t('emergency.sos_failed'), 'error');
+    } finally {
+      setSosLoading(false);
+    }
   }
 
   // ── handleEmergencyCall — POSTs directly to the emergency API ────────────
@@ -375,6 +436,9 @@ export default function ChatBot() {
     setHospitalData(null);
     setEmergencySuccess(false);
     setEmergencyLoading(false);
+    setSosLoading(false);
+    setSosSuccess(false);
+    lastEmergencyResponseRef.current = null;
     setMessages([]);
     // Directly add greeting — cannot rely on mount useEffect re-firing
     const name = state.profile.preferredName ? ` ${state.profile.preferredName}` : '';
@@ -400,6 +464,9 @@ export default function ChatBot() {
         <div className="px-4 pt-4">
           <EmergencyBanner
             onCallAmbulance={handleEmergencyCall}
+            onSOS={handleSOS}
+            sosLoading={sosLoading}
+            sosSuccess={sosSuccess}
           />
         </div>
       )}

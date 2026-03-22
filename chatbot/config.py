@@ -6,10 +6,12 @@ Loads all environment variables and defines model/memory settings.
 """
 
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-# Load environment variables from a .env file (place it in backend/ or project root)
-load_dotenv()
+# Always load from the .env file in the same directory as this config file,
+# regardless of the working directory uvicorn is launched from.
+load_dotenv(dotenv_path=Path(__file__).parent / ".env", override=True)
 
 # ---------------------------------------------------------------------------
 # API Keys

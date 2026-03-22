@@ -147,8 +147,18 @@ export const gujaratDistricts = [
 ];
 
 export const EMERGENCY_KEYWORDS = [
-  'chest pain', 'heart attack', 'unconscious', 'seizure', 'stroke',
-  'not breathing', 'severe bleeding', 'paralysis', 'suicide',
-  'poisoning', 'burn', 'accident', 'fracture',
-  'सीने में दर्द', 'बेहोश', 'दौरा', 'साँस नहीं',
+  // English
+  'chest pain', 'chest tightness', 'heart attack', 'unconscious', 'seizure', 'stroke',
+  'not breathing', 'can\'t breathe', 'cannot breathe', 'difficulty breathing',
+  'severe bleeding', 'paralysis', 'suicide', 'poisoning', 'burn', 'accident', 'fracture',
+  'loss of consciousness', 'passed out', 'anaphylaxis', 'overdose', 'choking',
+  // Hindi
+  'सीने में दर्द', 'छाती में दर्द', 'सांस नहीं', 'साँस नहीं', 'दिल का दौरा',
+  'बेहोश', 'दौरा', 'लकवा', 'खून बह', 'आत्महत्या',
+  // Gujarati
+  'છાતીમાં દુખાવો', 'ચક્કર', 'બેભાન', 'હૃદય હુમલો',
+  // Marathi
+  'छातीत दुखणे', 'हृदयविकार', 'बेशुद्ध',
+  // Tamil
+  'மார்பு வலி', 'மாரடைப்பு', 'மயக்கம்',
 ];

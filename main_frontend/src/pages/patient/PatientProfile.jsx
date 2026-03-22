@@ -36,18 +36,22 @@ async function reverseGeocode(lat, lng) {
 function RelativesList({ relatives, onAdd, onEdit, onRemove }) {
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState(null);
-  const [form, setForm] = useState({ name: '', relationship: '' });
+  const [form, setForm] = useState({ patientId: '', relationship: '' });
 
-  function openAdd() { setForm({ name: '', relationship: '' }); setEditId(null); setShowForm(true); }
-  function openEdit(r) { setForm({ name: r.name, relationship: r.relationship }); setEditId(r._id); setShowForm(true); }
+  function openAdd() { setForm({ patientId: '', relationship: '' }); setEditId(null); setShowForm(true); }
+  function openEdit(r) { setForm({ patientId: r.patientId, relationship: r.relationship }); setEditId(r._id); setShowForm(true); }
   function cancel() { setShowForm(false); setEditId(null); }
 
   function submit() {
-    if (!form.name.trim() || !form.relationship.trim()) return;
+    if (!form.patientId.trim() || !form.relationship.trim()) return;
+    const entry = {
+      patientId: form.patientId.trim(),
+      relationship: form.relationship.trim(),
+    };
     if (editId) {
-      onEdit(editId, { name: form.name.trim(), relationship: form.relationship.trim() });
+      onEdit(editId, entry);
     } else {
-      onAdd({ name: form.name.trim(), relationship: form.relationship.trim() });
+      onAdd(entry);
     }
     setShowForm(false);
     setEditId(null);
@@ -68,8 +72,8 @@ function RelativesList({ relatives, onAdd, onEdit, onRemove }) {
       {showForm && (
         <div className="flex flex-col gap-2 mb-4 p-3 rounded-xl" style={{ background: 'var(--color-surface-3)' }}>
           <input
-            className="input-field text-sm" placeholder="Name"
-            value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
+            className="input-field text-sm" placeholder="Patient ID"
+            value={form.patientId} onChange={e => setForm(p => ({ ...p, patientId: e.target.value }))}
             autoFocus
           />
           <input
@@ -92,10 +96,10 @@ function RelativesList({ relatives, onAdd, onEdit, onRemove }) {
 
       <div className="flex flex-col gap-2">
         {relatives.map(r => (
-          <div key={r._id || r.name} className="flex items-center justify-between px-3 py-2 rounded-lg"
+          <div key={r._id || r.patientId} className="flex items-center justify-between px-3 py-2 rounded-lg"
             style={{ background: 'var(--color-surface-2)' }}>
             <div>
-              <span className="font-medium text-sm text-text-primary">{r.name}</span>
+              <span className="font-medium text-sm text-text-primary font-mono">{r.patientId}</span>
               <span className="ml-2 text-xs text-text-secondary px-2 py-0.5 rounded-full"
                 style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary)' }}>
                 {r.relationship}
@@ -106,7 +110,7 @@ function RelativesList({ relatives, onAdd, onEdit, onRemove }) {
                 className="p-1.5 rounded-md hover:bg-surface-3 text-text-secondary hover:text-primary transition-colors">
                 <Pencil size={14} />
               </button>
-              <button type="button" onClick={() => onRemove(r._id || r.name)}
+              <button type="button" onClick={() => onRemove(r._id || r.patientId)}
                 className="p-1.5 rounded-md hover:bg-red-100 text-text-secondary hover:text-red-600 dark:hover:bg-red-900/30 transition-colors">
                 <X size={14} />
               </button>
@@ -223,9 +227,9 @@ export default function PatientProfile() {
   const handleSave = async () => {
     setSaving(true); setMsg('');
     try {
-      // Strip temp _id values before sending to backend; remove parentId (no longer in schema)
-      const cleanedRelatives = relatives.map(({ _id, name, relationship }) => ({
-        name,
+      // Strip temp _id values before sending to backend
+      const cleanedRelatives = relatives.map(({ _id, patientId, relationship }) => ({
+        patientId,
         relationship,
         ...(_id && !String(_id).startsWith('temp_') ? { _id } : {}),
       }));
@@ -247,8 +251,10 @@ export default function PatientProfile() {
   };
 
   const addRelative = (r) => setRelatives(p => [...p, { ...r, _id: `temp_${Date.now()}` }]);
+  // removeRelative key is _id for saved, patientId for temp entries without _id
+
   const editRelative = (id, updates) => setRelatives(p => p.map(r => (r._id === id ? { ...r, ...updates } : r)));
-  const removeRelative = (id) => setRelatives(p => p.filter(r => (r._id || r.name) !== id));
+  const removeRelative = (id) => setRelatives(p => p.filter(r => (r._id || r.patientId) !== id));
 
   return (
     <div className="min-h-screen bg-surface">

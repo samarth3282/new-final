@@ -120,7 +120,12 @@
     "immediate_steps": "Immediate Steps",
     "while_waiting": "While waiting for help:",
     "keep_calm": "Keep the patient calm",
-    "no_food_water": "Do not give food or water"
+    "no_food_water": "Do not give food or water",
+    "sos_button": "SOS — Alert Relatives",
+    "sos_loading": "Sending SOS…",
+    "sos_sent": "SOS Sent ✓",
+    "sos_success": "SOS sent to {n} relative(s) successfully.",
+    "sos_failed": "Failed to send SOS. Please try again."
   },
   "hospitals": {
     "km_away": "km away",

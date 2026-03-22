@@ -65,6 +65,15 @@ from system_prompt import (
 
 logger = logging.getLogger(__name__)
 
+# Language code to language name mapping
+LANGUAGE_NAMES = {
+    "en": "English",
+    "hi": "Hindi",
+    "gu": "Gujarati",
+    "mr": "Marathi",
+    "ta": "Tamil",
+}
+
 # Required triage fields in priority order (also the QnA question priority)
 REQUIRED_TRIAGE_FIELDS = [
     "duration",
@@ -501,7 +510,18 @@ async def emergency_node(state: GraphState) -> dict:
     else:
         api_failed   = False
         is_emergency = api_result.is_emergency
-        logger.info("emergency_node: is_emergency=%s", is_emergency)
+        logger.info("emergency_node: API result is_emergency=%s", is_emergency)
+
+    # ── Safety override: CRITICAL_KEYWORDS always win ─────────────────────
+    # If the routing into this node was keyword-triggered (urgency_signals present),
+    # never let the External API's False result send the user to QnA triage.
+    if urgency_signals and not is_emergency:
+        logger.warning(
+            "emergency_node: API returned is_emergency=False but urgency_signals %s present "
+            "→ overriding to True (CRITICAL_KEYWORD safety rule)",
+            urgency_signals,
+        )
+        is_emergency = True
 
     # ── Routing ───────────────────────────────────────────────────────────
     if is_emergency:
@@ -1093,13 +1113,35 @@ async def output_node(state: GraphState) -> dict:
     if output_mode == "query":
         pending_q = state.get("pending_question", "")
         user_message = state.get("user_message", "")
+        user_language = state.get("user_language", "en")
         if not pending_q:
             pending_q = "Could you describe your symptoms in more detail?"
+
+        # Translate the question to user's language if not English
+        message_text = pending_q
+        if user_language != "en":
+            lang_name = LANGUAGE_NAMES.get(user_language, user_language)
+            try:
+                translate_prompt = (
+                    f"Translate the following medical question to {lang_name}. "
+                    f"Return ONLY the translated text, nothing else. No quotes, no explanation.\n\n"
+                    f"{pending_q}"
+                )
+                messages = [
+                    SystemMessage(content="You are a medical translator. Translate accurately and naturally."),
+                    HumanMessage(content=translate_prompt),
+                ]
+                response = await _llm.ainvoke(messages)
+                translated = response.content.strip().strip('"').strip("'")
+                if translated:
+                    message_text = translated
+            except Exception as exc:
+                logger.warning("output_node: translation failed for query mode: %s", exc)
 
         final_response = {
             "output_type":     "query",
             "urgency_label":   None,
-            "message":         pending_q,
+            "message":         message_text,
             "action_items":    [],
             "hospital_info":   None,
             "disclaimer":      None,
@@ -1126,6 +1168,16 @@ async def output_node(state: GraphState) -> dict:
         logger.error("output_node: unknown mode '%s' — defaulting to answer", output_mode)
         output_mode = "answer"
         system_prompt = get_output_prompt("answer")
+
+    # ── Append language instruction if user's language is not English ─────
+    user_language = state.get("user_language", "en")
+    if user_language != "en":
+        lang_name = LANGUAGE_NAMES.get(user_language, user_language)
+        system_prompt += (
+            f"\n\nCRITICAL LANGUAGE INSTRUCTION: The patient speaks {lang_name}. "
+            f"You MUST write your ENTIRE response (message, action_items, disclaimer) in {lang_name}. "
+            f"Do NOT use English. The JSON keys must remain in English, but all values/text must be in {lang_name}."
+        )
 
     # ── Build mode-specific user content ─────────────────────────────────
     user_message  = state.get("user_message", "")
