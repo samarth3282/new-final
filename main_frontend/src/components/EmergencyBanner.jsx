@@ -1,7 +1,7 @@
 import { useTranslation } from '../contexts/I18nContext';
-import { AlertTriangle, Phone, MapPin } from 'lucide-react';
+import { AlertTriangle, Phone } from 'lucide-react';
 
-export default function EmergencyBanner({ onCallAmbulance, onSeeHospitals }) {
+export default function EmergencyBanner({ onCallAmbulance }) {
   const { t } = useTranslation();
 
   return (
@@ -17,13 +17,6 @@ export default function EmergencyBanner({ onCallAmbulance, onSeeHospitals }) {
         >
           <Phone size={18} />
           {t('emergency.call_108')}
-        </button>
-        <button
-          onClick={onSeeHospitals}
-          className="flex items-center gap-2 px-4 py-3 rounded-full border-2 border-white text-white font-semibold text-base min-h-[48px] hover:bg-white/10 transition-colors"
-        >
-          <MapPin size={18} />
-          {t('emergency.see_hospitals')}
         </button>
       </div>
     </div>

@@ -1,0 +1,426 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<prompt>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       ROLE & OBJECTIVE
+       ═══════════════════════════════════════════════════════════════════ -->
+  <role>
+    You are a senior full-stack architect. Your task is to produce a detailed,
+    step-by-step WORKFLOW PLAN (not implementation code yet) for integrating a
+    FastAPI chatbot backend with an existing React/Vite frontend for a multilingual
+    healthcare triage application. The plan will be reviewed and validated by the
+    human developer before any code is written by a separate model.
+
+    Output ONLY the workflow plan in the structured format described at the bottom
+    of this prompt. Do NOT write any implementation code. Do NOT skip edge cases.
+    Be precise about file paths, function names, and data shapes.
+  </role>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       PROJECT STRUCTURE
+       ═══════════════════════════════════════════════════════════════════ -->
+  <project_structure>
+    <root>FRONTEND/</root>
+
+    <backend_chatbot dir="FRONTEND/chatbot/">
+      <!-- Python FastAPI chatbot — already built and working -->
+      <file>main.py</file>           <!-- FastAPI app, CORS middleware -->
+      <file>chatbot.py</file>        <!-- run_chatbot() orchestration -->
+      <file>config.py</file>         <!-- CORS_ORIGINS, API_HOST, API_PORT -->
+      <file>schemas.py</file>        <!-- InputRequest, OutputResponse Pydantic models -->
+      <file>workflow.py</file>       <!-- LangGraph workflow -->
+      <file>session_store.py</file>  <!-- In-memory session management -->
+      <file>memory.py</file>         <!-- Mem0 memory integration -->
+      <file>api_clients.py</file>    <!-- External API clients -->
+      <file>system_prompt.py</file>  <!-- LLM system prompt -->
+      <file>prompt.xml</file>        <!-- Existing chatbot prompt (do not touch) -->
+    </backend_chatbot>
+
+    <frontend dir="FRONTEND/main_frontend/src/">
+      <file>pages/patient/ChatBot.jsx</file>       <!-- Main chat UI — primary file to modify -->
+      <file>utils/chatbotService.js</file>         <!-- Currently a MOCK — must be fully replaced -->
+      <file>utils/voiceUtils.js</file>             <!-- Sarvam STT/TTS + MyMemory translation — DO NOT modify -->
+      <file>utils/api.js</file>                    <!-- Other API calls — currently mocked -->
+      <file>utils/haversine.js</file>              <!-- Distance util — do not touch -->
+      <file>contexts/UserContext.jsx</file>        <!-- User state (profile, role, etc.) -->
+      <file>contexts/I18nContext.jsx</file>        <!-- Translation context, provides lang + t() -->
+      <file>components/EmergencyBanner.jsx</file>  <!-- Emergency UI component -->
+      <file>components/HospitalCarousel.jsx</file> <!-- Hospital list UI component -->
+      <file>components/ChatMessage.jsx</file>      <!-- Individual message bubble -->
+      <file>components/ChatInput.jsx</file>        <!-- Text + voice input bar -->
+    </frontend>
+
+    <new_files_to_create>
+      <file>FRONTEND/main_frontend/src/utils/patientId.js</file>
+      <!-- Utility to generate/persist a UUID patient_id in localStorage -->
+    </new_files_to_create>
+  </project_structure>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       EXISTING CODE FACTS (do not contradict these)
+       ═══════════════════════════════════════════════════════════════════ -->
+  <existing_code_facts>
+
+    <chatbot_api>
+      <base_url>http://localhost:8000</base_url>
+      <endpoint method="POST">/api/chat</endpoint>
+
+      <request_schema>
+        <field name="user_id"    type="string"  required="true"  note="Unique patient identifier, max 128 chars"/>
+        <field name="session_id" type="string"  required="false" note="Auto-generated UUID if omitted"/>
+        <field name="message"    type="string"  required="true"  note="Must be in ENGLISH, max 4096 chars"/>
+        <field name="lat"        type="float"   required="false" note="User latitude for hospital finder"/>
+        <field name="lng"        type="float"   required="false" note="User longitude for hospital finder"/>
+      </request_schema>
+
+      <response_schema>
+        <field name="output_type"      type="string"       values="query|answer|suggestions|clinic|emergency"/>
+        <field name="urgency_label"    type="string|null"  values="Self-care|Visit clinic|Emergency|null"/>
+        <field name="message"          type="string"       note="Main response text in English"/>
+        <field name="action_items"     type="string[]"     note="Numbered actionable steps"/>
+        <field name="hospital_info"    type="HospitalInfo[]|null" note="Populated for clinic and emergency modes"/>
+        <field name="disclaimer"       type="string|null"/>
+        <field name="session_complete" type="boolean"/>
+        <field name="session_id"       type="string"       note="Echo of session_id, persist this"/>
+        <field name="session_summary"  type="object|null"/>
+        <field name="total_summary"    type="object|null"/>
+      </response_schema>
+
+      <hospital_info_shape>
+        name, address, distance_km, phone, open_now, lat, lng
+      </hospital_info_shape>
+    </chatbot_api>
+
+    <emergency_api>
+      <url>https://muddy-wynn-codeshunt-c2861863.koyeb.app/call/emergency</url>
+      <method>POST</method>
+      <content_type>application/json</content_type>
+      <body>
+        {
+          "name": "[user firstName + lastName from UserContext, fallback to username]",
+          "location": "[reverse-geocoded human-readable address string from lat/lng]"
+        }
+      </body>
+      <note>This single API call handles BOTH ambulance call AND SMS. No separate SMS endpoint needed.</note>
+      <success_condition>HTTP 2xx response</success_condition>
+      <on_success>Show green success indicator in UI</on_success>
+    </emergency_api>
+
+    <reverse_geocoding>
+      <provider>Nominatim OpenStreetMap (free, no API key)</provider>
+      <endpoint>https://nominatim.openstreetmap.org/reverse?lat={lat}&amp;lon={lng}&amp;format=json</endpoint>
+      <result_field>display_name (full address string)</result_field>
+      <header_required>User-Agent: AetrixHealthApp/1.0</header_required>
+      <fallback>If fails, use raw string "{lat}, {lng}"</fallback>
+    </reverse_geocoding>
+
+    <tts_stt>
+      <provider>Sarvam AI</provider>
+      <functions_available>
+        speechToText(audioBlob, langCode) → Promise&lt;string&gt;
+        translateToEnglish(text, sarvamLangCode) → Promise&lt;string&gt;
+        translateFromEnglish(text, sarvamLangCode) → Promise&lt;string&gt;
+        textToSpeech(text, langCode) → Promise&lt;Blob&gt;
+        playAudio(audioBlob) → Promise&lt;void&gt;
+      </functions_available>
+      <lang_codes>en→en-IN, hi→hi-IN, gu→gu-IN, mr→mr-IN, ta→ta-IN</lang_codes>
+      <note>All functions already implemented in voiceUtils.js. Do NOT rewrite them.</note>
+    </tts_stt>
+
+    <user_context>
+      <name_fields>state.profile.firstName, state.profile.lastName, state.profile.preferredName (username fallback)</name_fields>
+      <location>lat/lng must be fetched fresh via browser Geolocation API at chat start — not stored in context</location>
+      <age>state.profile.age (may be null)</age>
+      <gender>state.profile.gender (may be null)</gender>
+    </user_context>
+
+    <patient_id>
+      <storage>localStorage key: "aetrix_patient_id"</storage>
+      <generation>crypto.randomUUID() on first visit</generation>
+      <note>
+        Not yet implemented anywhere. Create patientId.js with getOrCreatePatientId()
+        that reads from localStorage, creates if missing, and returns the string.
+        Use this value as user_id in every chatbot API call.
+      </note>
+    </patient_id>
+
+    <session_id>
+      <storage>localStorage key: "aetrix_session_id"</storage>
+      <lifecycle>
+        Persist across page refreshes.
+        Clear and generate new UUID only when user explicitly starts a new chat
+        (e.g., navigates away and comes back after session_complete: true).
+      </lifecycle>
+    </session_id>
+
+    <question_flow>
+      <note>
+        The existing QUESTION_FLOW array in ChatBot.jsx (severity, additional_symptoms,
+        duration, age_risk, comorbidity) MUST be kept exactly as-is.
+        All questions must be displayed as text AND spoken aloud in voice mode.
+        Questions must be shown in the user's selected language using the t() function.
+        User answers (option clicks or typed text) are collected in symptomDataRef.
+      </note>
+    </question_flow>
+
+    <cors>
+      <file>FRONTEND/chatbot/config.py</file>
+      <fix>Add "http://localhost:5173" to CORS_ORIGINS list if not already present</fix>
+    </cors>
+
+  </existing_code_facts>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       COMPLETE BEHAVIOUR SPECIFICATION
+       ═══════════════════════════════════════════════════════════════════ -->
+  <behaviour_specification>
+
+    <flow name="STARTUP">
+      1. On ChatBot.jsx mount:
+         a. Call getOrCreatePatientId() → store as patientId constant
+         b. Read session_id from localStorage key "aetrix_session_id".
+            If missing or stale (session_complete was true in last session),
+            generate new UUID and write to localStorage.
+         c. Request browser Geolocation → store lat/lng in component state.
+            If denied, lat/lng remain null (chatbot still works, no hospital list).
+         d. Show greeting message (existing logic — keep as-is).
+    </flow>
+
+    <flow name="QUESTION_FLOW — TEXT MODE">
+      1. User types message → displayed in chat as-is (their language).
+      2. Message translated to English via translateToEnglish() before storing in symptomDataRef.
+      3. QUESTION_FLOW proceeds exactly as current code.
+      4. Each bot question: displayed as text in user's selected language (t() keys).
+      5. Voice mode is NOT active, so no TTS for bot questions.
+    </flow>
+
+    <flow name="QUESTION_FLOW — VOICE MODE">
+      1. User speaks → Sarvam STT → returns transcript in user's language (originalText).
+      2. translateToEnglish(originalText) → englishText stored in symptomDataRef.
+      3. originalText displayed in chat bubble.
+      4. Each bot question:
+         a. Displayed as text in user's language (t() key).
+         b. ALSO spoken aloud via speakIfVoiceMode() using Sarvam TTS.
+      5. Option buttons (severity, duration etc.) still shown — user can tap OR speak.
+    </flow>
+
+    <flow name="CHATBOT API CALL — after question flow completes">
+      1. Build structured English summary message from symptomDataRef:
+         Format: "Patient symptoms: [symptoms joined by comma].
+                  Severity: [symptom_severity].
+                  Duration: [duration].
+                  Age: [patient_age_risk or state.profile.age].
+                  Gender: [state.profile.gender].
+                  Comorbidities: [comorbidities or 'none']."
+      2. Show typing indicator.
+      3. POST to /api/chat with:
+         { user_id: patientId, session_id, message: summaryMessage, lat, lng }
+      4. Persist response session_id back to localStorage.
+      5. Handle response by output_type (see below).
+    </flow>
+
+    <flow name="RESPONSE HANDLING — output_type: query">
+      <!-- Chatbot wants more info before giving verdict -->
+      1. Translate response.message from English → user's language.
+      2. Display translated message as bot bubble.
+      3. If voice mode → TTS speak the translated message.
+      4. User replies (text or voice) → translate to English → POST to /api/chat
+         with same session_id (multi-turn continues).
+      5. Repeat until session_complete: true or output_type changes.
+    </flow>
+
+    <flow name="RESPONSE HANDLING — output_type: answer">
+      1. Translate response.message + action_items from English → user's language.
+      2. Display as bot bubble.
+      3. If voice mode → TTS speak the translated message.
+      4. Session ends. No navigation. Conversation stops.
+    </flow>
+
+    <flow name="RESPONSE HANDLING — output_type: suggestions">
+      1. Translate response.message + action_items + disclaimer from English → user's language.
+      2. Display as bot bubble with action_items list below.
+      3. If voice mode → TTS speak the translated message.
+      4. session_complete → true. Session ends. No navigation.
+    </flow>
+
+    <flow name="RESPONSE HANDLING — output_type: clinic">
+      1. Translate response.message + action_items + disclaimer from English → user's language.
+      2. Display as bot bubble with action_items list.
+      3. If hospital_info is present → render HospitalCarousel with those hospitals.
+      4. If voice mode → TTS speak the translated message.
+      5. Session ends.
+    </flow>
+
+    <flow name="RESPONSE HANDLING — output_type: emergency">
+      1. setShowEmergency(true) → renders EmergencyBanner.
+      2. Translate response.message from English → user's language.
+      3. Display translated message as bot bubble.
+      4. If voice mode → TTS speak the translated message.
+      5. Render hospital_info list via HospitalCarousel (data comes from chatbot response —
+         do NOT make a separate hospitals API call).
+      6. Show TWO action buttons:
+         a. "Call Ambulance" button → triggers handleEmergencyCall() (see below).
+         b. "Send SMS" button → same handleEmergencyCall() (same API handles both).
+      7. Session ends.
+    </flow>
+
+    <flow name="EMERGENCY CALL — handleEmergencyCall()">
+      1. Show loading state on button.
+      2. Reverse-geocode lat/lng via Nominatim → get address string.
+         Fallback: "{lat}, {lng}" if Nominatim fails or lat/lng null.
+      3. Build name: state.profile.firstName + " " + state.profile.lastName,
+         fallback to state.profile.preferredName.
+      4. POST to https://muddy-wynn-codeshunt-c2861863.koyeb.app/call/emergency
+         with { name, location: addressString }.
+      5. On HTTP 2xx → show green success indicator on button, disable button.
+      6. On failure → show red error indicator, allow retry.
+    </flow>
+
+    <flow name="TRANSLATION RULES">
+      - User input (any language) → translateToEnglish() → sent to chatbot API.
+      - Chatbot response (always English) → translateFromEnglish() → displayed to user.
+      - If lang === 'en', skip translation calls entirely (pass through).
+      - Translate: message, action_items (each item individually), disclaimer.
+      - Do NOT translate: hospital names, addresses, distances, phone numbers.
+      - If translation fails → display English original with no crash.
+    </flow>
+
+  </behaviour_specification>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       FILES TO CREATE / MODIFY
+       ═══════════════════════════════════════════════════════════════════ -->
+  <files_to_change>
+
+    <file action="MODIFY" path="FRONTEND/chatbot/config.py">
+      Add "http://localhost:5173" to CORS_ORIGINS if not already present.
+      This is a one-line change.
+    </file>
+
+    <file action="CREATE" path="FRONTEND/main_frontend/src/utils/patientId.js">
+      Export single function: getOrCreatePatientId()
+      - Reads localStorage key "aetrix_patient_id"
+      - If missing, calls crypto.randomUUID(), writes to localStorage, returns it
+      - If present, returns existing value
+    </file>
+
+    <file action="REPLACE" path="FRONTEND/main_frontend/src/utils/chatbotService.js">
+      Replace entire mock implementation with real API integration.
+      Export:
+        sendChatMessage({ user_id, session_id, message, lat, lng }) → Promise&lt;OutputResponse&gt;
+      - POST to http://localhost:8000/api/chat
+      - Throws on non-2xx with structured error object { status, detail }
+      - Returns parsed JSON matching OutputResponse schema
+    </file>
+
+    <file action="MODIFY" path="FRONTEND/main_frontend/src/pages/patient/ChatBot.jsx">
+      Detailed changes:
+      1. Import getOrCreatePatientId from patientId.js
+      2. Import sendChatMessage (real) from chatbotService.js
+      3. On mount: init patientId, session_id, geolocation
+      4. Add handleEmergencyCall() function (reverse-geocode + POST to emergency API)
+      5. Add buildSummaryMessage() helper that constructs English summary from symptomDataRef
+      6. Replace handleDiagnose() with sendToRealChatbot() that:
+           - calls buildSummaryMessage()
+           - calls sendChatMessage()
+           - routes response by output_type
+      7. Add free-form reply handler for output_type: query multi-turn loop
+      8. Add translateAndDisplay() helper:
+           - translates message + action_items + disclaimer
+           - adds bot message bubble
+           - calls speakIfVoiceMode() if voice mode
+      9. Pass real hospital_info from chatbot response to HospitalCarousel
+         (remove mockHospitals usage)
+      10. Wire "Call Ambulance" and "Send SMS" buttons to handleEmergencyCall()
+      11. Session_id: read/write localStorage "aetrix_session_id"
+      12. Keep ALL existing question flow logic untouched
+      13. Keep speakIfVoiceMode() untouched
+    </file>
+
+  </files_to_change>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       EDGE CASES TO EXPLICITLY ADDRESS IN THE PLAN
+       ═══════════════════════════════════════════════════════════════════ -->
+  <edge_cases>
+    <case id="EC-01">Geolocation denied → lat/lng are null → chatbot called without lat/lng → hospital_info will be null → HospitalCarousel not rendered → emergency still works but shows no hospitals</case>
+    <case id="EC-02">Translation API (MyMemory) fails → catch error → display English original → no crash → log to console</case>
+    <case id="EC-03">Chatbot API (localhost:8000) unreachable → show user-facing error toast → remove typing indicator → allow retry</case>
+    <case id="EC-04">Emergency API call fails → show red error state on button → allow retry → do NOT disable button permanently</case>
+    <case id="EC-05">Nominatim reverse-geocode fails → fallback to "{lat}, {lng}" string for location</case>
+    <case id="EC-06">Sarvam TTS fails in voice mode → log error → continue silently, message still displayed as text</case>
+    <case id="EC-07">session_complete: true returned mid-query-flow → stop question flow → show chatbot response → end session</case>
+    <case id="EC-08">lang === 'en' → skip all translateToEnglish / translateFromEnglish calls entirely</case>
+    <case id="EC-09">user_id / patient_id is always read from localStorage, never from UserContext (UserContext has no _id field)</case>
+    <case id="EC-10">action_items is an array → each item translated individually → displayed as numbered list under bot message</case>
+  </edge_cases>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       CONSTRAINTS — MUST NOT VIOLATE
+       ═══════════════════════════════════════════════════════════════════ -->
+  <constraints>
+    <constraint>Do NOT modify voiceUtils.js — all Sarvam functions are already correct</constraint>
+    <constraint>Do NOT modify haversine.js</constraint>
+    <constraint>Do NOT modify UserContext.jsx</constraint>
+    <constraint>Do NOT modify I18nContext or any i18n files</constraint>
+    <constraint>Do NOT change the QUESTION_FLOW array or the question logic in ChatBot.jsx</constraint>
+    <constraint>Do NOT add any new npm packages — use only what is already installed</constraint>
+    <constraint>Do NOT use axios — use native fetch() only</constraint>
+    <constraint>The chatbot ALWAYS receives English. Never send untranslated non-English text to /api/chat</constraint>
+    <constraint>The user ALWAYS sees their own language. Never display raw English API responses to non-English users</constraint>
+    <constraint>Do NOT call a separate hospitals API — hospital_info comes from the chatbot response directly</constraint>
+    <constraint>Do NOT use any browser storage other than localStorage (no sessionStorage, no cookies)</constraint>
+    <constraint>EmergencyBanner and HospitalCarousel components must NOT be modified — only their props/usage in ChatBot.jsx</constraint>
+  </constraints>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       REQUIRED OUTPUT FORMAT
+       ═══════════════════════════════════════════════════════════════════ -->
+  <output_format>
+    Produce the workflow plan in this exact structure:
+
+    ## INTEGRATION WORKFLOW PLAN
+
+    ### PHASE 0: Pre-flight (config changes)
+    [List each config change with exact file path and what to change]
+
+    ### PHASE 1: patientId.js (new file)
+    [Describe exactly what the file exports, the logic, localStorage key]
+
+    ### PHASE 2: chatbotService.js (full replacement)
+    [Describe the exported function signature, request shape, response shape,
+     error handling strategy]
+
+    ### PHASE 3: ChatBot.jsx (integration wiring)
+    [Break into numbered sub-steps. For each: what function/hook is added/changed,
+     what it does, what it calls, what state it reads/writes.
+     Be specific about data flow.]
+
+    ### PHASE 4: Emergency Flow
+    [Full step-by-step of handleEmergencyCall() including reverse-geocode,
+     name building, API call, success/failure UI states]
+
+    ### PHASE 5: Translation + TTS Pipeline
+    [Describe the translateAndDisplay() helper: inputs, steps, outputs,
+     fallback on error]
+
+    ### PHASE 6: Edge Case Handling
+    [Map each EC-01 through EC-10 to concrete handling strategy]
+
+    ### PHASE 7: Testing Checklist
+    [Manual test scenarios the developer should verify after implementation]
+
+    ---
+    At the end, add a section:
+    ## QUESTIONS / ASSUMPTIONS
+    List any assumptions made and any clarifications needed from the developer.
+  </output_format>
+
+</prompt>

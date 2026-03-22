@@ -35,3 +35,8 @@ Thumbs.db
 
 # Coverage
 coverage/
+
+# Python
+.venv/
+__pycache__/
+*.pyc

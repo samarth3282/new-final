@@ -1,0 +1,26 @@
+# ============================================================
+# AETRIX Chatbot — Python Dependencies
+# ============================================================
+# Install with: pip install -r requirements.txt
+# ============================================================
+
+# --- Web Framework ---
+fastapi                  # REST API framework
+uvicorn[standard]        # ASGI server (with websocket + performance extras)
+
+# --- LLM & Orchestration ---
+langchain                # Core LangChain utilities
+langchain-groq           # LangChain wrapper for Groq-hosted LLMs
+langgraph                # Agentic workflow graph (LangGraph)
+
+# --- Memory ---
+mem0ai                   # Mem0 memory client (cloud + local)
+
+# --- Data Validation ---
+pydantic                 # Input/output schema validation (v2)
+
+# --- Configuration ---
+python-dotenv            # Load .env files into environment variables
+
+# --- HTTP Client (for external API calls) ---
+httpx                    # Async HTTP client used by api_clients.py

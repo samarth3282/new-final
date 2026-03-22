@@ -1,0 +1,579 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<prompt version="1.0" model="claude-opus-4-6" mode="extended_thinking">
+
+  <!-- ============================================================
+       IDENTITY & MISSION
+       ============================================================ -->
+  <identity>
+    You are an elite senior software architect and AI systems engineer with 15+ years of
+    experience building production-grade agentic workflows, LangGraph pipelines, and
+    healthcare AI systems. You write flawless, battle-tested Python code with zero
+    ambiguity, zero placeholders, and zero hand-waving. Every function you write is
+    complete, every edge case is handled, every schema is validated.
+  </identity>
+
+  <mission>
+    Design, architect, and fully implement a smart agentic healthcare chatbot workflow
+    using LangGraph. This is a real production system — not a demo, not a prototype.
+    Every node, every edge, every schema, every prompt must be production-ready,
+    thoroughly thought through, and immediately executable without modification.
+  </mission>
+
+  <!-- ============================================================
+       THINKING DIRECTIVE — EXTENDED PLANNING PHASE
+       ============================================================ -->
+  <thinking_directive>
+    Before writing a single line of code, engage your deepest reasoning and planning
+    mode. Work through ALL of the following in your scratchpad:
+
+    1. GRAPH TOPOLOGY — Draw the complete directed graph mentally. Identify every
+       possible path from input_node to output_node. Enumerate every conditional branch.
+       Confirm there are no dead ends, no infinite loops, no unreachable nodes.
+
+    2. STATE MACHINE ANALYSIS — What is the complete state object that flows through
+       the graph? What fields are mutable vs immutable? What fields are required at
+       each node entry? What happens if a required field is missing?
+
+    3. EDGE CONDITION EXHAUSTION — For every node that has multiple outgoing edges,
+       enumerate every possible condition that determines which edge fires. There must
+       be no ambiguous or uncovered condition.
+
+    4. LLM CALL DESIGN — For every node that makes an LLM call, design the exact
+       system prompt, the exact input format, and the exact output format (JSON schema).
+       Think about failure modes: what if the LLM hallucinates? What if JSON parsing
+       fails? Build retry and fallback logic.
+
+    5. EXTERNAL API CONTRACT — The emergency classifier API, the urgency classification
+       API, and the hospital finder API are black boxes. Design defensive wrappers
+       around each with timeout handling, error handling, and graceful degradation
+       fallback behavior.
+
+    6. SESSION AND MEMORY MANAGEMENT — How does conversation history persist across
+       turns? How does accumulated symptom data survive multiple QnA rounds? Design
+       the session state carefully.
+
+    7. CONCURRENCY AND ASYNC — Every node must be async-compatible for production
+       FastAPI deployment.
+
+    Only after exhausting all of the above should you begin writing code.
+  </thinking_directive>
+
+  <!-- ============================================================
+       SYSTEM ARCHITECTURE
+       ============================================================ -->
+  <architecture>
+    <framework>LangGraph (StateGraph) with typed state, conditional edges, async nodes</framework>
+    <llm>claude-sonnet-4-20250514 via Anthropic SDK (async client)</llm>
+    <api_runtime>FastAPI with async endpoints</api_runtime>
+    <state_persistence>In-memory session store (dict keyed by session_id) — designed
+    so it can be swapped for Redis without breaking graph logic</state_persistence>
+    <external_apis>
+      <api id="emergency_api">
+        POST /api/emergency-check
+        Input:  { symptoms: str, symptom_severity: float }
+        Output: { is_emergency: bool, confidence: float, reason: str }
+      </api>
+      <api id="classification_api">
+        POST /api/classify-urgency
+        Input:  { symptom_severity: float, symptom_count: int, duration: str,
+                  patient_age_risk: str, comorbidity_flag: bool }
+        Output: { urgency_score: float, label: "Self-care"|"Visit clinic"|"Emergency" }
+      </api>
+      <api id="hospital_api">
+        POST /api/find-hospital
+        Input:  { user_location: str, urgency: str }
+        Output: { hospitals: [ { name: str, address: str, distance_km: float,
+                                  phone: str, open_now: bool } ] }
+      </api>
+    </external_apis>
+  </architecture>
+
+  <!-- ============================================================
+       COMPLETE NODE SPECIFICATIONS
+       ============================================================ -->
+  <nodes>
+
+    <!-- NODE 1 -->
+    <node id="input_node" position="1">
+      <purpose>
+        Gateway of the entire graph. Receives raw user message, enriches state,
+        and classifies input intent using an LLM call to route correctly.
+      </purpose>
+
+      <inputs>
+        <required>
+          <field name="user_message" type="str" description="Raw text from user"/>
+          <field name="user_id"      type="str" description="Unique user identifier"/>
+          <field name="session_id"   type="str" description="Unique session identifier"/>
+        </required>
+        <optional>
+          <field name="symptom_severity"  type="float|None" range="0.0 to 1.0"/>
+          <field name="symptom_count"     type="int|None"   description="Number of distinct symptoms"/>
+          <field name="duration"          type="str|None"   description="e.g. 3 days, 2 hours"/>
+          <field name="patient_age_risk"  type="str|None"   values="low|medium|high"/>
+          <field name="comorbidity_flag"  type="bool|None"  description="Has pre-existing conditions"/>
+          <field name="user_location"     type="str|None"   description="City or coords for hospital lookup"/>
+        </optional>
+      </inputs>
+
+      <llm_task>
+        Classify user intent. Output strict JSON:
+        {
+          "input_type": "user_symptom" | "user_query" | "user_answer",
+          "extracted_symptoms": ["symptom1", "symptom2"],
+          "extracted_answer_fields": {
+            "symptom_severity": float | null,
+            "symptom_count": int | null,
+            "duration": str | null,
+            "patient_age_risk": str | null,
+            "comorbidity_flag": bool | null
+          },
+          "urgency_signals": ["signal1"],
+          "confidence": float
+        }
+      </llm_task>
+
+      <routing_logic>
+        IF input_type == "user_symptom":
+          Check if ANY critical urgency signal detected by LLM
+            YES: route to emergency_node
+            NO:  route to qna_node
+        IF input_type == "user_query":
+          route to output_node (with mode="answer")
+        IF input_type == "user_answer":
+          route to qna_node (to process answer and check completeness)
+      </routing_logic>
+
+      <output_edges>
+        <edge target="emergency_node" condition="user_symptom AND critical_signals_detected"/>
+        <edge target="qna_node"       condition="user_symptom AND no_critical_signals"/>
+        <edge target="qna_node"       condition="user_answer"/>
+        <edge target="output_node"    condition="user_query"/>
+      </output_edges>
+    </node>
+
+    <!-- NODE 2 -->
+    <node id="emergency_node" position="2">
+      <purpose>
+        Fast-path check for life-threatening situations. Calls external emergency
+        classification API. If emergency confirmed go to hospital_finding_node.
+        If not emergency go to qna_node to continue normal triage flow.
+      </purpose>
+
+      <inputs>
+        <required>
+          <field name="user_message"       type="str"/>
+          <field name="extracted_symptoms" type="list[str]"/>
+          <field name="symptom_severity"   type="float|None" note="use 0.8 as default if None"/>
+        </required>
+      </inputs>
+
+      <external_api_call ref="emergency_api">
+        <request_builder>
+          Concatenate extracted_symptoms into a symptoms string.
+          Use symptom_severity if available, else default to 0.8 (conservative).
+        </request_builder>
+        <error_handling>
+          timeout=5s, retries=2.
+          On failure: log error, set is_emergency=False (safe degradation),
+          continue to qna_node with a note in state.
+        </error_handling>
+      </external_api_call>
+
+      <routing_logic>
+        IF is_emergency == True:
+          set state.urgency_label = "Emergency"
+          route to hospital_finding_node
+        IF is_emergency == False:
+          route to qna_node
+      </routing_logic>
+
+      <output_edges>
+        <edge target="hospital_finding_node" condition="is_emergency == True"/>
+        <edge target="qna_node"              condition="is_emergency == False"/>
+      </output_edges>
+    </node>
+
+    <!-- NODE 3 -->
+    <node id="qna_node" position="3">
+      <purpose>
+        Intelligent interviewer. Checks which triage fields are still missing.
+        If fields missing: generate targeted question, route to output_node(mode="query").
+        If all fields present: route to classification_node.
+        Also processes user_answer inputs from previous questions and fills state fields.
+      </purpose>
+
+      <required_fields_for_classification>
+        symptom_severity, symptom_count, duration, patient_age_risk, comorbidity_flag
+      </required_fields_for_classification>
+
+      <answer_processing>
+        When state.input_type == "user_answer":
+          Use LLM to extract field values from user natural language answer.
+          Merge extracted values into existing state (never overwrite with null).
+        When state.input_type == "user_symptom" (coming from emergency_node fallback):
+          Attempt to extract available fields from symptom description first.
+          Only ask for fields that genuinely cannot be inferred.
+      </answer_processing>
+
+      <question_generation>
+        LLM must generate ONE question at a time (not all missing fields at once).
+        Priority order: duration, symptom_severity, symptom_count, patient_age_risk, comorbidity_flag.
+        Question must be conversational, empathetic, and medically appropriate.
+        Never ask the same question twice per session.
+        Track asked_questions in state to prevent repetition.
+      </question_generation>
+
+      <routing_logic>
+        IF any required field is still None after answer processing:
+          set state.pending_question = generated_question
+          route to output_node (mode="query")
+        IF all required fields are populated:
+          route to classification_node
+      </routing_logic>
+
+      <output_edges>
+        <edge target="output_node"         condition="missing_fields_exist"/>
+        <edge target="classification_node" condition="all_fields_complete"/>
+      </output_edges>
+    </node>
+
+    <!-- NODE 4 -->
+    <node id="classification_node" position="4">
+      <purpose>
+        Final medical urgency classification. Calls external ML classification API
+        with all 5 triage parameters. Interprets urgency_score into label.
+        Routes to hospital_finding_node or output_node based on label.
+      </purpose>
+
+      <inputs>
+        <required>
+          <field name="symptom_severity"  type="float"/>
+          <field name="symptom_count"     type="int"/>
+          <field name="duration"          type="str"/>
+          <field name="patient_age_risk"  type="str"/>
+          <field name="comorbidity_flag"  type="bool"/>
+        </required>
+      </inputs>
+
+      <external_api_call ref="classification_api">
+        <error_handling>
+          timeout=8s, retries=2.
+          On failure use rule-based fallback:
+            score = (symptom_severity * 0.4) + (comorbidity_flag * 0.3) + (age_risk_score * 0.3)
+            where age_risk_score: low=0.2, medium=0.5, high=0.9
+        </error_handling>
+      </external_api_call>
+
+      <score_interpretation>
+        0.0 to 0.39  = Self-care
+        0.40 to 0.74 = Visit clinic
+        0.75 to 1.0  = Emergency
+        At exact thresholds use the upper/more urgent label (conservative choice)
+      </score_interpretation>
+
+      <routing_logic>
+        IF label == "Self-care":
+          set state.urgency_label = "Self-care"
+          route to output_node (mode="suggestions")
+        IF label == "Visit clinic":
+          set state.urgency_label = "Visit clinic"
+          route to hospital_finding_node
+        IF label == "Emergency":
+          set state.urgency_label = "Emergency"
+          route to hospital_finding_node
+      </routing_logic>
+
+      <output_edges>
+        <edge target="output_node"           condition="label == Self-care"/>
+        <edge target="hospital_finding_node" condition="label == Visit clinic OR Emergency"/>
+      </output_edges>
+    </node>
+
+    <!-- NODE 5 -->
+    <node id="hospital_finding_node" position="5">
+      <purpose>
+        Finds nearest appropriate medical facility based on user location and urgency level.
+        Always routes to output_node after API call (with or without results).
+      </purpose>
+
+      <inputs>
+        <required>
+          <field name="urgency_label"  type="str" values="Visit clinic|Emergency"/>
+        </required>
+        <optional>
+          <field name="user_location"  type="str|None" note="If None, ask user to share location in output"/>
+        </optional>
+      </inputs>
+
+      <external_api_call ref="hospital_api">
+        <error_handling>
+          timeout=10s, retries=1.
+          On failure or no location: set state.hospital_data = None.
+          Output node will handle gracefully by telling user to search manually.
+        </error_handling>
+      </external_api_call>
+
+      <routing_logic>
+        Always route to output_node.
+        mode="emergency" if urgency_label is Emergency.
+        mode="clinic" if urgency_label is Visit clinic.
+      </routing_logic>
+
+      <output_edges>
+        <edge target="output_node" condition="always"/>
+      </output_edges>
+    </node>
+
+    <!-- NODE 6 -->
+    <node id="output_node" position="6">
+      <purpose>
+        Final response generator. The ONLY node that produces output visible to the user.
+        Uses LLM to generate empathetic, accurate, medically appropriate responses
+        tailored to the output mode.
+      </purpose>
+
+      <output_modes>
+        <mode id="query">
+          LLM generates a warm, clear follow-up question to gather missing triage data.
+          Tone: empathetic nurse asking a patient.
+          Include brief context for WHY the question is being asked.
+        </mode>
+        <mode id="answer">
+          LLM answers the user's healthcare query using its medical knowledge.
+          Must include: direct answer, important caveats, when to seek help.
+          Add disclaimer: This is informational, not a substitute for medical advice.
+        </mode>
+        <mode id="suggestions">
+          Urgency = Self-care.
+          LLM generates: urgency assessment, step-by-step self-care instructions,
+          warning signs that would require escalating to clinic or ER,
+          estimated recovery timeline.
+          Tone: caring GP explaining to a patient.
+        </mode>
+        <mode id="clinic">
+          Urgency = Visit clinic.
+          LLM generates: urgency assessment, why clinic visit is recommended,
+          what to tell the doctor, nearest clinic details from hospital_data,
+          what to do while waiting for appointment.
+        </mode>
+        <mode id="emergency">
+          Urgency = Emergency.
+          LLM generates: BOLD emergency alert, immediate action steps (call ambulance etc.),
+          nearest emergency hospital from hospital_data with full contact details,
+          what to do RIGHT NOW while waiting for help.
+          Tone: urgent but calm. Never panic the user.
+        </mode>
+      </output_modes>
+
+      <response_schema>
+        {
+          "output_type": "query" | "answer" | "suggestions" | "clinic" | "emergency",
+          "urgency_label": "Self-care" | "Visit clinic" | "Emergency" | null,
+          "message": str,
+          "action_items": [str],
+          "hospital_info": { ... } | null,
+          "disclaimer": str | null,
+          "session_complete": bool
+        }
+      </response_schema>
+
+      <output_edges>
+        <edge target="END" condition="always"/>
+      </output_edges>
+    </node>
+
+  </nodes>
+
+  <!-- ============================================================
+       FILES TO GENERATE — COMPLETE, NO PLACEHOLDERS
+       ============================================================ -->
+  <files_to_generate>
+
+    <file path="schemas.py">
+      Define ALL Pydantic v2 models:
+      - GraphState (TypedDict for LangGraph state — full field list with types and defaults)
+      - InputRequest (FastAPI request body)
+      - OutputResponse (FastAPI response body matching output_schema above)
+      - EmergencyAPIRequest / EmergencyAPIResponse
+      - ClassificationAPIRequest / ClassificationAPIResponse
+      - HospitalAPIRequest / HospitalAPIResponse
+      - Hospital (individual hospital model)
+      - ConversationTurn (for history tracking)
+      - SessionData (full session object stored in memory)
+      Every model must have field validators, examples, and descriptions.
+    </file>
+
+    <file path="system_prompts.py">
+      Define ALL system prompts as module-level constants:
+      - INPUT_CLASSIFIER_PROMPT
+      - QNA_ANSWER_PROCESSOR_PROMPT
+      - QNA_QUESTION_GENERATOR_PROMPT
+      - OUTPUT_QUERY_PROMPT
+      - OUTPUT_ANSWER_PROMPT
+      - OUTPUT_SUGGESTIONS_PROMPT
+      - OUTPUT_CLINIC_PROMPT
+      - OUTPUT_EMERGENCY_PROMPT
+      Each prompt must:
+        - Set precise role and persona
+        - Define exact JSON output schema with field descriptions
+        - Include examples of good and bad outputs
+        - Include explicit instructions for handling ambiguous inputs
+        - Include tone and style guidelines
+        - Include medical accuracy and safety disclaimers
+    </file>
+
+    <file path="workflow.py">
+      Complete LangGraph StateGraph implementation:
+      - Import all schemas, prompts, and utilities
+      - Define async node functions (one per node)
+      - Define all conditional edge routing functions
+      - Build the graph: add_node, add_conditional_edges, add_edge
+      - Compile the graph
+      - Expose compiled graph as module-level app variable
+      - Include session state management (get_session, update_session)
+      - Include all external API caller functions with full error handling
+      - Include LLM caller utility (async, with retry, with JSON parsing and validation)
+      - Include the complete graph visualization comment at the top showing all edges
+    </file>
+
+    <file path="api.py">
+      FastAPI application:
+      - POST /chat endpoint (takes InputRequest, returns OutputResponse)
+      - GET /session/{session_id} endpoint (returns current session state)
+      - DELETE /session/{session_id} endpoint (clears session)
+      - Health check endpoint
+      - CORS middleware
+      - Request/response logging middleware
+      - Proper HTTP error handling
+    </file>
+
+  </files_to_generate>
+
+  <!-- ============================================================
+       CODE QUALITY MANDATES
+       ============================================================ -->
+  <code_quality>
+    <mandate>Every function has a complete docstring with Args, Returns, Raises</mandate>
+    <mandate>Every external API call has timeout, retry, and fallback</mandate>
+    <mandate>Every LLM call has JSON validation with Pydantic and retry on parse failure</mandate>
+    <mandate>Type hints on every parameter and return value — no bare dict or Any</mandate>
+    <mandate>Session state is thread-safe (use asyncio.Lock)</mandate>
+    <mandate>All prompts use f-strings with explicit variable injection — no ambiguity</mandate>
+    <mandate>Logging at DEBUG level inside nodes, INFO level for routing decisions</mandate>
+    <mandate>No TODO comments, no placeholder functions, no implement later stubs</mandate>
+    <mandate>Graph state fields default to None — never throw KeyError</mandate>
+    <mandate>Conversation history capped at last 20 turns to prevent context overflow</mandate>
+    <mandate>All PII fields handled with care — no logging of raw user_message content</mandate>
+  </code_quality>
+
+  <!-- ============================================================
+       EDGE CASES — HANDLE ALL OF THESE EXPLICITLY
+       ============================================================ -->
+  <edge_cases>
+    <case>User sends empty message: input_node catches, returns validation error via output_node</case>
+    <case>User describes emergency symptoms mid-query conversation: input_node re-classifies and emergency_node fires</case>
+    <case>All 5 QnA fields already provided in first message: qna_node skips questions, goes straight to classification_node</case>
+    <case>External API returns HTTP 5xx: use fallback logic, never crash the graph</case>
+    <case>LLM returns malformed JSON: retry up to 3 times with corrective prompt, then use safe fallback</case>
+    <case>User location not available: hospital_finding_node sets hospital_data=None, output_node handles gracefully</case>
+    <case>Session not found: create new session automatically</case>
+    <case>User sends "I'm having chest pain": MUST route to emergency_node immediately, never to QnA first</case>
+    <case>User asks a general query AFTER a symptom session: answer query but remind to continue symptom assessment</case>
+    <case>comorbidity_flag inference: if user mentions diabetes, heart disease, cancer, or COPD: auto-set to True</case>
+    <case>patient_age_risk inference: elderly, 60+, infant, child: extract age risk automatically</case>
+    <case>urgency_score exactly at threshold 0.4 or 0.75: use upper label (conservative, safer choice)</case>
+  </edge_cases>
+
+  <!-- ============================================================
+       CRITICAL HEALTHCARE SAFETY RULES
+       ============================================================ -->
+  <safety_rules>
+    <rule priority="ABSOLUTE">
+      NEVER tell a user they are NOT having an emergency if they describe chest pain,
+      difficulty breathing, sudden severe headache, loss of consciousness, stroke symptoms,
+      severe bleeding, or suicidal ideation. These ALWAYS route to emergency_node first.
+    </rule>
+    <rule priority="HIGH">
+      Every output in answer mode must end with: If your symptoms worsen or you feel
+      unsafe, please seek immediate medical attention or call emergency services.
+    </rule>
+    <rule priority="HIGH">
+      Self-care suggestions must always include a list of RED FLAG symptoms that would
+      require escalation. Never give self-care advice for symptoms that could mask
+      serious conditions such as appendicitis, pulmonary embolism, or meningitis.
+    </rule>
+    <rule priority="MEDIUM">
+      Never diagnose. Always say "this may indicate" or "these symptoms are often
+      associated with" — never "you have [condition]".
+    </rule>
+    <rule priority="MEDIUM">
+      Always recommend professional consultation in the disclaimer, regardless of
+      urgency level.
+    </rule>
+  </safety_rules>
+
+  <!-- ============================================================
+       EXAMPLE FLOWS — VALIDATE YOUR IMPLEMENTATION AGAINST THESE
+       ============================================================ -->
+  <example_flows>
+
+    <flow id="emergency_path">
+      User: "I'm having severe chest pain radiating to my left arm and I can't breathe"
+      input_node: input_type=user_symptom, urgency_signals=[chest_pain, radiating_arm, breathing_difficulty]
+      emergency_node: API returns is_emergency=True
+      hospital_finding_node: finds nearest ER
+      output_node(mode=emergency): "This is a medical emergency. Call emergency services NOW..."
+    </flow>
+
+    <flow id="qna_path">
+      User: "I have a headache and mild fever"
+      input_node: input_type=user_symptom, no critical signals
+      qna_node: symptom_severity=None, asks about severity
+      output_node(mode=query): "I want to make sure I give you the right guidance. How would you rate the intensity of your headache? (1=mild, 10=excruciating)"
+      [Next turn]
+      User: "About a 4, it is uncomfortable but I can function"
+      input_node: input_type=user_answer
+      qna_node: extracts symptom_severity=0.4, asks next question about duration
+      [After all fields collected]
+      classification_node: score=0.25 — Self-care
+      output_node(mode=suggestions): "Based on your symptoms, self-care should be sufficient..."
+    </flow>
+
+    <flow id="query_path">
+      User: "What is the difference between viral and bacterial fever?"
+      input_node: input_type=user_query
+      output_node(mode=answer): Comprehensive medical answer with disclaimer
+    </flow>
+
+    <flow id="visit_clinic_path">
+      User: "I've had lower back pain for 2 weeks, I'm 55 with diabetes"
+      input_node: user_symptom, comorbidity_flag auto-inferred=True, patient_age_risk=medium
+      emergency_node: not emergency
+      qna_node: fills remaining fields
+      classification_node: score=0.52 — Visit clinic
+      hospital_finding_node: finds nearest clinic
+      output_node(mode=clinic): "You should visit a clinic soon. Here are the closest options..."
+    </flow>
+
+  </example_flows>
+
+  <!-- ============================================================
+       FINAL INSTRUCTION
+       ============================================================ -->
+  <final_instruction>
+    Now generate ALL FOUR files completely. Start with schemas.py, then system_prompts.py,
+    then workflow.py, then api.py. Do not stop between files. Do not summarize what you
+    would write — write it. Every class, every function, every prompt, every edge,
+    every handler — complete and production-ready.
+
+    The graph compiled at the end of workflow.py must be runnable with:
+      result = await app.ainvoke(initial_state)
+
+    The FastAPI server in api.py must be runnable with:
+      uvicorn api:app --reload
+
+    Ship it.
+  </final_instruction>
+
+</prompt>

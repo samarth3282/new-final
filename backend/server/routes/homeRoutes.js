@@ -5,7 +5,29 @@ const router = express.Router();
 
 const SAFE_SELECT = '-password -verificationToken -verificationTokenExpiry -resetPasswordToken -resetPasswordTokenExpiry -refreshTokenHash';
 
-// Returns the full user profile (excluding sensitive auth fields)
+// Proxy for the emergency ambulance call — avoids browser CORS restrictions
+router.post('/emergency/call', async (req, res) => {
+    const { name, location } = req.body;
+    if (!name || !location) {
+        return res.status(400).json({ success: false, message: 'name and location are required' });
+    }
+    try {
+        const upstream = await fetch(
+            'https://muddy-wynn-codeshunt-c2861863.koyeb.app/call/emergency',
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, location }),
+            }
+        );
+        const text = await upstream.text();
+        res.status(upstream.status).send(text);
+    } catch (err) {
+        console.error('Emergency proxy error:', err);
+        res.status(502).json({ success: false, message: 'Could not reach emergency service' });
+    }
+});
+
 router.get('/home', authMiddleware, async (req, res) => {
     try {
         const { userId } = req.userInfo;
